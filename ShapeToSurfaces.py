@@ -25,18 +25,30 @@ def createNewComponent():
 
 def run(context):
     try:
-        commandId = 'SpurGear'
-        commandName = 'Convert Model to Surfaces'
-        commandDescription = 'Conver Model to Surfaces for 3D Printing'
+        commandId = 'ShapeToSurfaces'
+        commandName = 'Convert Solid Model to Layer Surfaces'
+        commandDescription = 'Conver Solid Model to Layer Surfaces for 3D Printing'
+        resourceDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resources') # absolute resource file path is specified
+        global cmdDef
         cmdDef = ui.commandDefinitions.itemById(commandId)
-        if not cmdDef:
-            resourceDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resources') # absolute resource file path is specified
-            cmdDef = ui.commandDefinitions.addButtonDefinition(commandId, commandName, commandDescription, resourceDir)
+        
+        if cmdDef:
+            cmdDef.deleteMe()
 
+        cmdDef = ui.commandDefinitions.addButtonDefinition(commandId, commandName, '', os.path.join(resourceDir,'ShapeToSurfaces'))
         onCommandCreated = SpurGearCommandCreatedHandler() #Create UI
         cmdDef.commandCreated.add(onCommandCreated)
         # keep the handler referenced beyond this function
         handlers.append(onCommandCreated)
+
+        toolbarControls = ui.allToolbarPanels.itemById('SolidMakePanel').controls
+
+        global toolbarControls
+        toolbarControls = toolbarControls.itemById(commandId)
+        if toolbarControls:
+            toolbarControls.deleteMe()
+        #toolbarControl = toolbarControls.addCommand(cmdDef, toolbarControls.item(1).id)     
+        #toolbarControl.isVisible = True
 
         inputs = adsk.core.NamedValues.create()
         cmdDef.execute(inputs)
@@ -72,10 +84,10 @@ class SpurGearCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             initialVal = adsk.core.ValueInput.createByReal(.0254)
             inputs.addValueInput('layerHeight', 'Layer Height', 'mm' , initialVal)
 
-            inputs.addStringValueInput('numLayers', 'Number of Layers', '5')
+            inputs.addStringValueInput('numLayers', 'Number of Layers', '10')
             inputs.addStringValueInput('numContours', 'Number of Contours', '3')
 
-            initialVal4 = adsk.core.ValueInput.createByReal(.020)
+            initialVal4 = adsk.core.ValueInput.createByReal(.0508)
             inputs.addValueInput('contWidth', 'Contour Width', 'mm' , initialVal4)
 
         except:
@@ -124,20 +136,21 @@ class SpurGearCommandExecuteHandler(adsk.core.CommandEventHandler):
 def createPlane(layerHeight, numContours, numLayers, contWidth):
     activeDoc = adsk.core.Application.get().activeDocument
     design = activeDoc.design       
-    rootComp = design.rootComponent
-    #features = rootComp.features        
+    rootComp = design.rootComponent     
     flowSketch = rootComp.sketches.itemByName("Sketch1")
 
     for planeCounter in range (0,numLayers):
         planes = rootComp.constructionPlanes
         planeInput = planes.createInput()
-        offsetValue = adsk.core.ValueInput.createByReal(planeCounter*layerHeight)
+        planeHeight =  planeCounter*layerHeight
+        offsetValue = adsk.core.ValueInput.createByReal(planeHeight)
         planeInput.setByOffset(flowSketch, offsetValue)
         planeOne = planes.add(planeInput)
-        projectToPlane(planeOne,contWidth,numContours)
+        projectToPlane(planeOne,contWidth,numContours,layerHeight, planeHeight)
+    #offsetCurves(contWidth, numContours)
     return
 
-def projectToPlane(plane, contWidth, numContours):
+def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight):
     #First we need to create a sketch
     activeDoc = adsk.core.Application.get().activeDocument
     design = activeDoc.design       
@@ -147,30 +160,80 @@ def projectToPlane(plane, contWidth, numContours):
     bodies = rootComp.bRepBodies
     #now we can intersect the bodies with the sletch
     for body in bodies:
-        sketch.projectCutEdges(body)
-        offsetCurves(sketch,contWidth, numContours)
+        bodyZ=body.boundingBox.maxPoint.z
+        if bodyZ >= planeHeight:
+            sketch.projectCutEdges(body)
+
+    extrudeSurface(layerHeight,sketch)
+        #offsetCurves(contWidth, numContours)
     return
 
-def offsetCurves(sketch, contWidth, numContours):
-    activeDoc= adsk.core.Application.get().activeDocument
-    design = activeDoc.design    
-    rootComp = design.rootComponent
-     
-    # make an object collection containing all of the curves/lines in the sketch
-    #curveCollection = adsk.core.ObjectCollection.create()
-    lines= sketch.sketchCurves.sketchLines
-    app = adsk.core.Application.get()
-    ui  = app.userInterface
-    #newLine= lines.addByTwoPoints(adsk.core.Point3D.create(0, 0, 0), adsk.core.Point3D.create(3, 1, 0))
-    newRec= lines.addThreePointRectangle(adsk.core.Point3D.create(8, 0, 0), adsk.core.Point3D.create(11, 1, 0), adsk.core.Point3D.create(9, 3, 0))
-    curves = sketch.findConnectedCurves(newRec.item(1))
-    #ui.messageBox(str(curves.classType))
 
-    #for curve in curves:
-    #    curveCollection.add(curve)
-        #ui.messageBox('Hello script')
-    dirPoint = adsk.core.Point3D.create(0, 0.5, 0)
-    offsets = sketch.offset(curves, dirPoint ,0.5)
+def extrudeSurface(layerHeight,sketch):
+ # Fetch the root component and some of the features we'll be using
+    activeDoc = adsk.core.Application.get().activeDocument
+    design = activeDoc.design       
+    rootComp = design.rootComponent
+    features = rootComp.features
+    extrudes = features.extrudeFeatures
+        
+    #flowSketch = rootComp.sketches.sketch
+    distance = adsk.core.ValueInput.createByReal(layerHeight-.001)
+    
+    # empty collection to hold all the curves we'll be using to make channels
+    curveCollection = adsk.core.ObjectCollection.create()
+        
+    # make an object collection containing all of the curves/lines in the sketch
+    #curves = flowSketch.sketchCurves
+    curves=sketch.sketchCurves
+    for curve in curves:
+        curveCollection.add(curve)
+    #comment(curves.count)
+        
+               
+    # build the collection of open profiles
+    while (curveCollection.count > 0):
+        # Add the first curve and any connected curves to the collection of channel profiles
+        curve = curveCollection.item(0) 
+        if curve.isConstruction:
+            # if it's Construction geometry, then delete and don't process
+            curveCollection.removeByIndex(0)
+        else:
+            profileCollection = adsk.core.ObjectCollection.create()
+
+            # for non-construction curves, add the open profile consisting of all the connected curves
+            # to the collection of profiles we'll be extruding
+            profileCollection.add(rootComp.createOpenProfile(curve))
+            
+            # remove all the connected curves (which includes the original) from the curve collection
+            # so we don't add duplicates to the profile collection
+            for connectedCurve in sketch.findConnectedCurves(curve):
+                curveCollection.removeByItem(connectedCurve)
+        
+            extrudeInput = extrudes.createInput(profileCollection, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+            extrudeInput.isSolid = False
+        
+            extrudeInput.setDistanceExtent(False, distance)
+            extrude = extrudes.add(extrudeInput)
+
+
+def offsetCurves(contWidth, numContours):
+    activeDoc= adsk.core.Application.get().activeDocument
+    #rootComp=activeDoc.design.rootComponent
+    sketches=activeDoc.design.rootComponent.sketches   
+    sketch = sketches.itemByName("Sketch1")
+
+    lines= sketch.sketchCurves.sketchLines
+    curves = sketch.findConnectedCurves(lines.item(0))
+    #distance = adsk.core.ValueInput.createByReal(contWidth)
+
+    #   comment(lines.count)
+
+    dirPoint = adsk.core.Point3D.create(9999, 9999, 0) #far away to make sure it is outside all bodies
+    
+    for offsetCounter in range (1,numContours): 
+        sketch.offset(curves, dirPoint, offsetCounter*contWidth)
+
     return
 
 class SpurGearCommandDestroyHandler(adsk.core.CommandEventHandler):
@@ -216,3 +279,9 @@ class SpurGearCommandValidateInputsHandler(adsk.core.ValidateInputsEventHandler)
         except:
             if ui:
                 ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
+
+def comment(inputComment):
+    app = adsk.core.Application.get()
+    ui  = app.userInterface
+    ui.messageBox(str(inputComment))
+    return
