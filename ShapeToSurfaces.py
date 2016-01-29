@@ -138,19 +138,32 @@ def createPlane(layerHeight, numContours, numLayers, contWidth):
     design = activeDoc.design       
     rootComp = design.rootComponent     
     flowSketch = rootComp.sketches.itemByName("Sketch1")
+    #We create a new component (surfComp) to later add our extruded surface in
+    surfComp = rootComp.occurrences.addNewComponent (adsk.core.Matrix3D.create()).component
 
-    for planeCounter in range (0,numLayers):
-        planes = rootComp.constructionPlanes
+    modelMinZ=rootComp.boundingBox.minPoint.z
+    modelMaxZ=rootComp.boundingBox.maxPoint.z
+    comment(modelMinZ)
+    planes=rootComp.constructionPlanes
+    planeInOff=planes.createInput()
+
+    planeInOff.setByOffset(rootComp.xYConstructionPlane,adsk.core.ValueInput.createByReal(modelMinZ))
+    planeMin=planes.add(planeInOff)
+    planeHeight = modelMinZ
+    #for planeCounter in range (0,numLayers):
+    while planeHeight  <=  modelMaxZ:
+        #planes = rootComp.constructionPlanes
         planeInput = planes.createInput()
-        planeHeight =  planeCounter*layerHeight
         offsetValue = adsk.core.ValueInput.createByReal(planeHeight)
-        planeInput.setByOffset(flowSketch, offsetValue)
+        planeInput.setByOffset(rootComp.xYConstructionPlane, offsetValue)
         planeOne = planes.add(planeInput)
-        projectToPlane(planeOne,contWidth,numContours,layerHeight, planeHeight)
-    #offsetCurves(contWidth, numContours)
+        projectToPlane(planeOne,contWidth,numContours,layerHeight, planeHeight, surfComp)
+        planeHeight+= layerHeight
+
+        
     return
 
-def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight):
+def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight, surfComp):
     #First we need to create a sketch
     activeDoc = adsk.core.Application.get().activeDocument
     design = activeDoc.design       
@@ -160,23 +173,27 @@ def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight):
     bodies = rootComp.bRepBodies
     #now we can intersect the bodies with the sletch
     for body in bodies:
-        bodyZ=body.boundingBox.maxPoint.z
-        if bodyZ >= planeHeight:
+        bodyMaxZ = body.boundingBox.maxPoint.z
+        bodyMinZ = body.boundingBox.minPoint.z
+
+        if  bodyMaxZ  >=  planeHeight  and  bodyMinZ < planeHeight:
+        #if bodyMaxZ  >=  planeHeight:
             sketch.projectCutEdges(body)
 
-    extrudeSurface(layerHeight,sketch)
-        #offsetCurves(contWidth, numContours)
+    extrudeSurface(layerHeight,sketch, numContours, contWidth, surfComp)
     return
 
 
-def extrudeSurface(layerHeight,sketch):
+def extrudeSurface(layerHeight,sketch, numContours, contWidth, surfComp):
  # Fetch the root component and some of the features we'll be using
     activeDoc = adsk.core.Application.get().activeDocument
     design = activeDoc.design       
     rootComp = design.rootComponent
-    features = rootComp.features
+    features = surfComp.features
+    #features = rootComp.features
     extrudes = features.extrudeFeatures
-        
+    
+
     #flowSketch = rootComp.sketches.sketch
     distance = adsk.core.ValueInput.createByReal(layerHeight-.001)
     
@@ -216,11 +233,25 @@ def extrudeSurface(layerHeight,sketch):
             extrudeInput.setDistanceExtent(False, distance)
             extrude = extrudes.add(extrudeInput)
 
+            #Creating offsets
+            body = extrude.bodies[0]
+            
+            for contCounter in range(1,numContours):
+                inputEntities = adsk.core.ObjectCollection.create()
+                inputEntities.add(body)
 
-def offsetCurves(contWidth, numContours):
+                #we multiply contWidth by (-1) to make the offset to the inside of the shape
+                distanceOffset = adsk.core.ValueInput.createByReal(-1*contWidth*contCounter)
+                offsetFeatures = features.offsetFeatures
+                offsetInput = offsetFeatures.createInput(inputEntities, (distanceOffset), adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+                offsetFeatures.add(offsetInput);
+
+
+
+def offsetCurves(contWidth, numContours, surfComp):
     activeDoc= adsk.core.Application.get().activeDocument
-    #rootComp=activeDoc.design.rootComponent
-    sketches=activeDoc.design.rootComponent.sketches   
+    rootComp=activeDoc.design.rootComponent
+    sketches=rootComp.sketches   
     sketch = sketches.itemByName("Sketch1")
 
     lines= sketch.sketchCurves.sketchLines
