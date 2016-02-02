@@ -12,6 +12,7 @@ if app:
     ui = app.userInterface
 
 newComp = None
+shapeToSurfacePanel =None
 
 def createNewComponent():
     # Get the active design.
@@ -29,24 +30,31 @@ def run(context):
         commandName = 'Convert Solid Model to Layer Surfaces'
         commandDescription = 'Conver Solid Model to Layer Surfaces for 3D Printing'
         resourceDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resources') # absolute resource file path is specified
+        
         global cmdDef
         cmdDef = ui.commandDefinitions.itemById(commandId)
-        
         if cmdDef:
             cmdDef.deleteMe()
 
         cmdDef = ui.commandDefinitions.addButtonDefinition(commandId, commandName, '', os.path.join(resourceDir,'ShapeToSurfaces'))
-        #cmdDef.toolClipFilename = os.path.join(resourceDir,'FATHOM_tool_tip.png')
+        cmdDef.toolClipFilename = os.path.join(resourceDir,'FATHOM_tool_tip.png')
         onCommandCreated = ShapeToSurfaceCommandCreatedHandler() #Create UI
         cmdDef.commandCreated.add(onCommandCreated)
-        # keep the handler referenced beyond this function
         handlers.append(onCommandCreated)
 
+
         toolbarControls = ui.allToolbarPanels.itemById('SolidMakePanel').controls
+
         global toolbarControls
-        toolbarControls = toolbarControls.itemById(commandId)
-        if toolbarControls:
-            toolbarControls.deleteMe()
+
+
+        toolbarControl = toolbarControls.itemById(commandId)
+        if toolbarControl:
+            toolbarControl.deleteMe()
+
+        #toolbarControl = toolbarControls.addCommand(commandDefinition, toolbarControls.item(0).id)     
+        #toolbarControl.isVisible = True
+
 
         # Add the SmartQuote command to the Make panel
         #toolbarControl = toolbarControls.addCommand(cmdDef, toolbarControls.item(1).id)     
@@ -63,6 +71,7 @@ def run(context):
     except:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
+
 
 class ShapeToSurfaceCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):    
     def __init__(self):
@@ -85,7 +94,7 @@ class ShapeToSurfaceCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             # Define the inputs.
             inputs = cmd.commandInputs
 
-            initialVal = adsk.core.ValueInput.createByReal(.1)
+            initialVal = adsk.core.ValueInput.createByReal(.0254)
             inputs.addValueInput('layerHeight', 'Layer Height', 'mm' , initialVal)
 
             inputs.addStringValueInput('numContours', 'Number of Contours', '3')
@@ -201,7 +210,7 @@ def extrudeSurface(layerHeight,sketch, numContours, contWidth):
     curves=sketch.sketchCurves
     for curve in curves:
         curveCollection.add(curve)
-                   
+               
     # build the collection of open profiles
     while (curveCollection.count > 0):
         # Add the first curve and any connected curves to the collection of channel profiles
@@ -221,20 +230,37 @@ def extrudeSurface(layerHeight,sketch, numContours, contWidth):
             extrude = extrudes.add(extrudeInput)
 
             #Creating offsets
-            try:
-                body = extrude.bodies[0]
-                for contCounter in range(1,numContours):
-                    rootComp.occurrences.itemByName("extrusions:1").activate()
-                    inputEntities = adsk.core.ObjectCollection.create()
-                    inputEntities.add(body)
-                    #we multiply contWidth by (-1) to make the offset to the inside of the shape
-                    distanceOffset = adsk.core.ValueInput.createByReal(-1*contWidth*contCounter)
-                    offsetInput = offsets.createInput(inputEntities, distanceOffset, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-                    #Check if the offset is valid (it might be too small to exist, else ignore it )
-                    if  offsetInput.isValid:
-                        offsets.add(offsetInput)
-            except:
-                True
+           
+            body = extrude.bodies[0]
+            offsetSurfaces(body,numContours,contWidth)
+           
+
+def offsetSurfaces (body, numContours, contWidth):
+    activeDoc = adsk.core.Application.get().activeDocument
+    design = activeDoc.design       
+    rootComp = design.rootComponent
+    features= rootComp.features
+
+    #use the new componentas the root comp
+    extrudesComp = rootComp.occurrences.itemByName("extrusions:1").component
+    extrudes = extrudesComp.features.extrudeFeatures
+    offsets = extrudesComp.features.offsetFeatures #this should be offsetComp but it crashers    
+    for contCounter in range(1,numContours):
+        rootComp.occurrences.itemByName("extrusions:1").activate()
+        inputEntities = adsk.core.ObjectCollection.create()
+        inputEntities.add(body)
+        #we multiply contWidth by (-1) to make the offset to the inside of the shape
+        distanceOffset = adsk.core.ValueInput.createByReal(-1*contWidth*contCounter)
+        offsetInput = offsets.createInput(inputEntities, distanceOffset, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+        #Check if the offset is valid (it might be too small to exist, in that case ignore it )
+        try:
+            offsets.add(offsetInput)
+        except:
+            #errorMessage = 'Failed:\n{}'.format(traceback.format_exc())
+            #Just call any other API method in your except: block to reset the last error
+            adsk.core.ObjectCollection.create()
+            
+            
 
 
 class ShapeToSurfaceCommandDestroyHandler(adsk.core.CommandEventHandler):
