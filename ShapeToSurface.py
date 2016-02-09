@@ -250,12 +250,11 @@ def offsetSurfaces (body, numContours, contWidth):
         inputEntities = adsk.core.ObjectCollection.create()
         inputEntities.add(body)
         #we multiply contWidth by (-1) to make the offset to the inside of the shape
-        # if contCounter % 2 == 0:
-        #     distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*-.5))
-        # else:
-        #     distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*.5+.5))
-        
-        distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*-1))
+        if contCounter % 2 == 0:
+            distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*-.5))
+        else:
+            distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*.5+.5))
+
         offsetInput = offsets.createInput(inputEntities, distanceOffset, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
         #Check if the offset is valid (it might be too small to exist, in that case ignore it )
         try:
