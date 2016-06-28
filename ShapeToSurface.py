@@ -300,7 +300,7 @@ class ShapeToSurfaceCommandValidateInputsHandler(adsk.core.ValidateInputsEventHa
             if numContoursInput.value.isdigit():
                 numContours = int(numContoursInput.value)
                 
-            if numContours < 2 or layerHeight <= 0 or contWidth <= 0:
+            if numContours < 1 or layerHeight <= 0 or contWidth <= 0:
                 args.areInputsValid = False
             else:
                 args.areInputsValid = True
