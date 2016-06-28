@@ -17,7 +17,8 @@ shapeToSurfacePanel =None
 def createNewComponent():
     # Get the active design.
     product = app.activeProduct
-    design = adsk.fusion.Design.cast(product)
+    design = adsk.fusion.Design.cast(product)  
+    design.designType = adsk.fusion.DesignTypes.DirectDesignType
     rootComp = design.rootComponent
     allOccs = rootComp.occurrences
     newOcc = allOccs.addNewComponent(adsk.core.Matrix3D.create())
@@ -30,6 +31,7 @@ def run(context):
         commandName = 'Convert Solid Model to Layer Surfaces'
         commandDescription = 'Conver Solid Model to Layer Surfaces for 3D Printing'
         resourceDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resources') # absolute resource file path is specified
+        
         
         global cmdDef
         cmdDef = ui.commandDefinitions.itemById(commandId)
@@ -93,11 +95,11 @@ class ShapeToSurfaceCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
             # Define the inputs.
             inputs = cmd.commandInputs
-
+            
             initialVal = adsk.core.ValueInput.createByReal(.0254)
             inputs.addValueInput('layerHeight', 'Layer Height', 'mm' , initialVal)
 
-            inputs.addStringValueInput('numContours', 'Number of Contours', '3')
+            inputs.addStringValueInput('numContours', 'Number of Contours', '4')
 
             initialVal4 = adsk.core.ValueInput.createByReal(.0508)
             inputs.addValueInput('contWidth', 'Contour Width', 'mm' , initialVal4)
@@ -123,8 +125,13 @@ class ShapeToSurfaceCommandExecuteHandler(adsk.core.CommandEventHandler):
 
             #In case no value was entered
             layerHeight = .0254
-            numContours = 3
+            numContours = 4
             contWidth = .0508
+        
+            product = app.activeProduct
+            design = adsk.fusion.Design.cast(product)  
+            design.designType = adsk.fusion.DesignTypes.DirectDesignType
+            
 
             if not layerHeightInput or not numContoursInput or not contWidthInput:
                 ui.messageBox("One of the inputs don't exist.")
@@ -136,6 +143,8 @@ class ShapeToSurfaceCommandExecuteHandler(adsk.core.CommandEventHandler):
                     numContours = int(numContoursInput.value)
 
             createPlane(layerHeight, numContours, contWidth)
+            design.designType = adsk.fusion.DesignTypes.ParametricDesignType
+
 
         except:
             if ui:
@@ -148,7 +157,7 @@ def createPlane(layerHeight, numContours, contWidth):
     rootComp = design.rootComponent     
     rootComp.occurrences.addNewComponent (adsk.core.Matrix3D.create()).component.name=("extrusions")
 
-    modelMinZ=rootComp.boundingBox.minPoint.z
+    modelMinZ=rootComp.boundingBox.minPoint.z+0.002
     modelMaxZ=rootComp.boundingBox.maxPoint.z
 
     planes=rootComp.constructionPlanes
@@ -181,12 +190,13 @@ def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight):
     for body in bodies:
         bodyMaxZ = body.boundingBox.maxPoint.z
         bodyMinZ = body.boundingBox.minPoint.z
-
-        if  bodyMaxZ  >=  planeHeight  and  bodyMinZ < planeHeight:
-            sketch.projectCutEdges(body)
+        if body.isVisible:
+            if  bodyMaxZ  >=  planeHeight  and  bodyMinZ < planeHeight:
+                sketch.projectCutEdges(body)
 
     extrudeSurface(layerHeight,sketch, numContours, contWidth)
     design.activateRootComponent()
+    sketch.isLightBulbOn=False
     return
 
 
@@ -203,37 +213,47 @@ def extrudeSurface(layerHeight,sketch, numContours, contWidth):
     extrudes = extrudesComp.features.extrudeFeatures
     offsets = extrudesComp.features.offsetFeatures #this should be offsetComp but it crashers
     
-    distance = adsk.core.ValueInput.createByReal(layerHeight-.001)
+    distance = adsk.core.ValueInput.createByReal(layerHeight)
          
     # make an object collection containing all of the curves/lines in the sketch
     curveCollection = adsk.core.ObjectCollection.create()
     curves=sketch.sketchCurves
-    for curve in curves:
-        curveCollection.add(curve)
+    # for curve in curves:
+    #     curveCollection.add(curve)
                
-    # build the collection of open profiles
-    while (curveCollection.count > 0):
-        # Add the first curve and any connected curves to the collection of channel profiles
-        curve = curveCollection.item(0) 
-        if curve.isConstruction:
-            curveCollection.removeByIndex(0)
-        else:
-            profileCollection = adsk.core.ObjectCollection.create()
-            profileCollection.add(rootComp.createOpenProfile(curve))
-            for connectedCurve in sketch.findConnectedCurves(curve):
-                curveCollection.removeByItem(connectedCurve)
+    # # build the collection of open profiles
+    # while (curveCollection.count > 0):
+    #     # Add the first curve and any connected curves to the collection of channel profiles
+    #     curve = curveCollection.item(0) 
+    #     if curve.isConstruction:
+    #         curveCollection.removeByIndex(0)
+    #     else:
+    #         profileCollection = adsk.core.ObjectCollection.create()
+    #         profileCollection.add(rootComp.createOpenProfile(curve))
+    #         for connectedCurve in sketch.findConnectedCurves(curve):
+    #             curveCollection.removeByItem(connectedCurve)
         
-            extrudeInput = extrudes.createInput(profileCollection, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-            extrudeInput.isSolid = False
+    #         extrudeInput = extrudes.createInput(profileCollection, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+    #         extrudeInput.isSolid = False
         
-            extrudeInput.setDistanceExtent(False, distance)
-            extrude = extrudes.add(extrudeInput)
+    #         extrudeInput.setDistanceExtent(False, distance)
+    #         extrude = extrudes.add(extrudeInput)
 
-            #Creating offsets
+    #         #Creating offsets
            
-            body = extrude.bodies[0]
-            offsetSurfaces(body,numContours,contWidth)
-           
+    #         body = extrude.bodies[0]
+    #         offsetSurfaces(body,numContours,contWidth)
+    profiles=sketch.profiles
+    for profile in profiles:
+        extrudeInput = extrudes.createInput(profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+        extrudeInput.isSolid = False
+    
+        extrudeInput.setDistanceExtent(False, distance)
+        extrude = extrudes.add(extrudeInput)
+
+        #Creating offsets
+        body = extrude.bodies[0]
+        offsetSurfaces(body,numContours,contWidth)
 
 def offsetSurfaces (body, numContours, contWidth):
     activeDoc = adsk.core.Application.get().activeDocument
@@ -301,7 +321,7 @@ class ShapeToSurfaceCommandValidateInputsHandler(adsk.core.ValidateInputsEventHa
             if numContoursInput.value.isdigit():
                 numContours = int(numContoursInput.value)
                 
-            if numContours < 2 or layerHeight <= 0 or contWidth <= 0:
+            if numContours < 1 or layerHeight <= 0 or contWidth <= 0:
                 args.areInputsValid = False
             else:
                 args.areInputsValid = True
@@ -315,3 +335,4 @@ def comment(inputComment):
     ui  = app.userInterface
     ui.messageBox(str(inputComment))
     return
+
