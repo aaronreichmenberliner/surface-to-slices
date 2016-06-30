@@ -18,7 +18,6 @@ def createNewComponent():
     # Get the active design.
     product = app.activeProduct
     design = adsk.fusion.Design.cast(product)  
-    design.designType = adsk.fusion.DesignTypes.DirectDesignType
     rootComp = design.rootComponent
     allOccs = rootComp.occurrences
     newOcc = allOccs.addNewComponent(adsk.core.Matrix3D.create())
@@ -54,17 +53,8 @@ def run(context):
         if toolbarControl:
             toolbarControl.deleteMe()
 
-        #toolbarControl = toolbarControls.addCommand(commandDefinition, toolbarControls.item(0).id)     
-        #toolbarControl.isVisible = True
-
-
-        # Add the SmartQuote command to the Make panel
-        #toolbarControl = toolbarControls.addCommand(cmdDef, toolbarControls.item(1).id)     
-        #toolbarControl.isVisible = True
-
         inputs = adsk.core.NamedValues.create()
         cmdDef.execute(inputs)
-
 
 
         # prevent this module from being terminate when the script returns, because we are waiting for event handlers to fire
@@ -99,7 +89,7 @@ class ShapeToSurfaceCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             initialVal = adsk.core.ValueInput.createByReal(.0254)
             inputs.addValueInput('layerHeight', 'Layer Height', 'mm' , initialVal)
 
-            inputs.addStringValueInput('numContours', 'Number of Contours', '4')
+            inputs.addStringValueInput('numContours', 'Number of Contours', '5')
 
             initialVal4 = adsk.core.ValueInput.createByReal(.0508)
             inputs.addValueInput('contWidth', 'Contour Width', 'mm' , initialVal4)
@@ -125,7 +115,7 @@ class ShapeToSurfaceCommandExecuteHandler(adsk.core.CommandEventHandler):
 
             #In case no value was entered
             layerHeight = .0254
-            numContours = 4
+            numContours = 5
             contWidth = .0508
         
             product = app.activeProduct
@@ -175,8 +165,11 @@ def createPlane(layerHeight, numContours, contWidth):
         planeOne = planes.add(planeInput)
         projectToPlane(planeOne,contWidth,numContours,layerHeight, planeHeight)
         planeHeight+= layerHeight
-
-        
+    
+    bodies = rootComp.bRepBodies
+    #bodies.isLightBulbOn=False
+    for body in bodies:
+        body.isLightBulbOn=False
     return
 
 def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight):
@@ -218,10 +211,10 @@ def extrudeSurface(layerHeight,sketch, numContours, contWidth):
     # make an object collection containing all of the curves/lines in the sketch
     curveCollection = adsk.core.ObjectCollection.create()
     curves=sketch.sketchCurves
-    # for curve in curves:
-    #     curveCollection.add(curve)
+    for curve in curves:
+        curveCollection.add(curve)
                
-    # # build the collection of open profiles
+    # build the collection of open profiles
     # while (curveCollection.count > 0):
     #     # Add the first curve and any connected curves to the collection of channel profiles
     #     curve = curveCollection.item(0) 
@@ -243,6 +236,7 @@ def extrudeSurface(layerHeight,sketch, numContours, contWidth):
            
     #         body = extrude.bodies[0]
     #         offsetSurfaces(body,numContours,contWidth)
+    
     profiles=sketch.profiles
     for profile in profiles:
         extrudeInput = extrudes.createInput(profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
@@ -270,12 +264,12 @@ def offsetSurfaces (body, numContours, contWidth):
         inputEntities = adsk.core.ObjectCollection.create()
         inputEntities.add(body)
         #we multiply contWidth by (-1) to make the offset to the inside of the shape
-        # if contCounter % 2 == 0:
-        #     distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*-.5))
-        # else:
-        #     distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*.5+.5))
+        if contCounter % 2 == 0:
+             distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*-.5))
+        else:
+             distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*.5+.5))
         
-        distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*-1))
+        #distanceOffset = adsk.core.ValueInput.createByReal(contWidth*(contCounter*-1))
         offsetInput = offsets.createInput(inputEntities, distanceOffset, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
         #Check if the offset is valid (it might be too small to exist, in that case ignore it )
         try:
