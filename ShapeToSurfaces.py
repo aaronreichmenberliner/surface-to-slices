@@ -134,8 +134,17 @@ class ShapeToSurfaceCommandExecuteHandler(adsk.core.CommandEventHandler):
 
             createPlane(layerHeight, numContours, contWidth)
             design.designType = adsk.fusion.DesignTypes.ParametricDesignType
+        
+            activeDoc = adsk.core.Application.get().activeDocument
+            design = activeDoc.design       
+            rootComp = design.rootComponent     
 
-
+            bodies = rootComp.bRepBodies
+            sketches= rootComp.sketches
+            for body in bodies:
+                body.isLightBulbOn=False
+            for sketch in sketches:
+                sketch.isVisible=False
         except:
             if ui:
                 ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
@@ -166,10 +175,6 @@ def createPlane(layerHeight, numContours, contWidth):
         projectToPlane(planeOne,contWidth,numContours,layerHeight, planeHeight)
         planeHeight+= layerHeight
     
-    bodies = rootComp.bRepBodies
-    #bodies.isLightBulbOn=False
-    for body in bodies:
-        body.isLightBulbOn=False
     return
 
 def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight):
@@ -189,7 +194,7 @@ def projectToPlane(plane, contWidth, numContours, layerHeight, planeHeight):
 
     extrudeSurface(layerHeight,sketch, numContours, contWidth)
     design.activateRootComponent()
-    sketch.isLightBulbOn=False
+    #sketch.isLightBulbOn=False
     return
 
 
@@ -215,39 +220,39 @@ def extrudeSurface(layerHeight,sketch, numContours, contWidth):
         curveCollection.add(curve)
                
     # build the collection of open profiles
-    # while (curveCollection.count > 0):
-    #     # Add the first curve and any connected curves to the collection of channel profiles
-    #     curve = curveCollection.item(0) 
-    #     if curve.isConstruction:
-    #         curveCollection.removeByIndex(0)
-    #     else:
-    #         profileCollection = adsk.core.ObjectCollection.create()
-    #         profileCollection.add(rootComp.createOpenProfile(curve))
-    #         for connectedCurve in sketch.findConnectedCurves(curve):
-    #             curveCollection.removeByItem(connectedCurve)
+    while (curveCollection.count > 0):
+        # Add the first curve and any connected curves to the collection of channel profiles
+        curve = curveCollection.item(0) 
+        if curve.isConstruction:
+            curveCollection.removeByIndex(0)
+        else:
+            profileCollection = adsk.core.ObjectCollection.create()
+            profileCollection.add(rootComp.createOpenProfile(curve))
+            for connectedCurve in sketch.findConnectedCurves(curve):
+                curveCollection.removeByItem(connectedCurve)
         
-    #         extrudeInput = extrudes.createInput(profileCollection, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-    #         extrudeInput.isSolid = False
+            extrudeInput = extrudes.createInput(profileCollection, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+            extrudeInput.isSolid = False
         
-    #         extrudeInput.setDistanceExtent(False, distance)
-    #         extrude = extrudes.add(extrudeInput)
+            extrudeInput.setDistanceExtent(False, distance)
+            extrude = extrudes.add(extrudeInput)
 
-    #         #Creating offsets
+            #Creating offsets
            
-    #         body = extrude.bodies[0]
-    #         offsetSurfaces(body,numContours,contWidth)
-    
-    profiles=sketch.profiles
-    for profile in profiles:
-        extrudeInput = extrudes.createInput(profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-        extrudeInput.isSolid = False
-    
-        extrudeInput.setDistanceExtent(False, distance)
-        extrude = extrudes.add(extrudeInput)
+            body = extrude.bodies[0]
+            offsetSurfaces(body,numContours,contWidth)
 
-        #Creating offsets
-        body = extrude.bodies[0]
-        offsetSurfaces(body,numContours,contWidth)
+    # profiles=sketch.profiles
+    # for profile in profiles:
+    #     extrudeInput = extrudes.createInput(profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+    #     extrudeInput.isSolid = False
+    
+    #     extrudeInput.setDistanceExtent(False, distance)
+    #     extrude = extrudes.add(extrudeInput)
+
+    #     #Creating offsets
+    #     body = extrude.bodies[0]
+    #     offsetSurfaces(body,numContours,contWidth)
 
 def offsetSurfaces (body, numContours, contWidth):
     activeDoc = adsk.core.Application.get().activeDocument
