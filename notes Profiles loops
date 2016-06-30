@@ -1,0 +1,38 @@
+selections = adsk.core.Application.get().userInterface.activeSelections
+
+sketch.profiles.count
+
+
+profile 0 has 2 loops  sketch.profiles.item(0).count
+profile 1 has 1 loop  sketch.profiles.item(1).count
+profile 2 has 2 loops  sketch.profiles.item(2).count
+
+loop1 = sketch.profiles.item(0).profileLoops.item(0)
+loop2 = sketch.profiles.item(0).profileLoops.item(1)
+
+loop3 = sketch.profiles.item(1).profileLoops.item(0)
+
+loop4 = sketch.profiles.item(2).profileLoops.item(0)
+loop5 = sketch.profiles.item(2).profileLoops.item(1)
+
+curve1 = loop1.profileCurves.item(0)
+curve2 = loop2.profileCurves.item(0)
+
+curve3 = loop3.profileCurves.item(0)
+
+curve4 = loop4.profileCurves.item(0)
+curve5 = loop5.profileCurves.item(0)
+
+se1 = curve1.sketchEntity
+se2 = curve2.sketchEntity
+
+se3 = curve3.sketchEntity
+
+se4 = curve4.sketchEntity
+se5 = curve5.sketchEntity
+
+extrudes = rootComp.features.extrudeFeatures
+
+open1=rootComp.createOpenProfile(se1)
+
+extrudeInput1 = extrudes.createInput(open1, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
